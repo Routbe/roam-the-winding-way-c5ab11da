@@ -2353,5 +2353,18 @@
   "trust.admin.approve": "Genehmigen",
   "trust.admin.sudo": "Bestätige zuerst mit deinem Passkey (Sudo-Modus).",
   "trust.admin.result.approved": "Genehmigt. Das Dokument wurde gelöscht.",
-  "trust.admin.result.rejected": "Abgelehnt. Das Dokument wurde gelöscht."
+  "trust.admin.result.rejected": "Abgelehnt. Das Dokument wurde gelöscht.",
+  "trust.l3.declareTitle": "Befugnis erklärt · mit Ihrem Passkey",
+  "trust.l3.declareIntro": "Sie erklären, für diese Organisation befugt zu sein. ROUT signiert diese Erklärung, nachdem Sie mit Ihrem Passkey bestätigen.",
+  "trust.l3.declareNeeds": "Dafür brauchen Sie eine verifizierte Identität, eine verifizierte Organisation, ein DNS-Siegel und eine bestätigte Arbeitsadresse.",
+  "trust.l3.declareButton": "Mit Passkey erklären",
+  "trust.l3.declared": "Ihre Erklärung wurde signiert und gespeichert.",
+  "trust.reason.dns_required": "Bestätigen Sie zuerst die Domain mit einem DNS-Eintrag.",
+  "trust.reason.ticket_invalid": "Diese Bestätigung ist abgelaufen. Bitte erneut versuchen.",
+  "trust.reason.ticket_replayed": "Diese Bestätigung wurde bereits verwendet. Bitte erneut versuchen.",
+  "trust.reason.declaration_not_configured": "Erklären ist noch nicht aktiviert.",
+  "trust.reason.already_proven": "Ihre Befugnis ist bereits mit einem offiziellen Dokument nachgewiesen.",
+  "trust.reason.frozen": "Ihre Befugnis ist eingefroren.",
+  "trust.reason.statement_mismatch": "Die Angaben haben sich inzwischen geändert. Bitte erneut versuchen.",
+  "trust.admin.result.audit_chain_broken": "Das Audit-Protokoll ist nicht intakt. Es wurde nichts entschieden."
 }

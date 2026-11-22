@@ -2353,5 +2353,18 @@
   "trust.admin.approve": "Approve",
   "trust.admin.sudo": "Confirm with your passkey first (Sudo Mode).",
   "trust.admin.result.approved": "Approved. The document has been deleted.",
-  "trust.admin.result.rejected": "Rejected. The document has been deleted."
+  "trust.admin.result.rejected": "Rejected. The document has been deleted.",
+  "trust.l3.declareTitle": "Authority declared · with your passkey",
+  "trust.l3.declareIntro": "You declare that you are authorised for this organisation. ROUT signs that declaration after you confirm with your passkey.",
+  "trust.l3.declareNeeds": "This needs a verified identity, a verified organisation, a DNS seal and a confirmed work address.",
+  "trust.l3.declareButton": "Declare with passkey",
+  "trust.l3.declared": "Your declaration was signed and saved.",
+  "trust.reason.dns_required": "Confirm the domain with a DNS record first.",
+  "trust.reason.ticket_invalid": "This confirmation has expired. Please try again.",
+  "trust.reason.ticket_replayed": "This confirmation was already used. Please try again.",
+  "trust.reason.declaration_not_configured": "Declaring is not enabled yet.",
+  "trust.reason.already_proven": "Your authority is already proven with an official document.",
+  "trust.reason.frozen": "Your authority is frozen.",
+  "trust.reason.statement_mismatch": "The details changed in the meantime. Please try again.",
+  "trust.admin.result.audit_chain_broken": "The audit log is not intact. Nothing was decided."
 }
