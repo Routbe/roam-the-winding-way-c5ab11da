@@ -147,3 +147,6 @@ use the editor.
 ## One-file migration rollout
 - A GO for a single migration is applied with scripts/migration-rollout.ts --apply: the exact db/ file text travels as one parameter, runs only if its SHA-256 equals the file checksum and its predecessor is recorded, and is recorded with the definer guard in the same transaction (dry run: src/test/migration-rollout.test.ts). Why: a retyped or hand-split file must never diverge from db/.
 <!-- AGENT-MEMORY:END -->
+
+## Database egress
+- Public pollers (health probe, now-playing, custom presence) answer from a short per-isolate memo before touching Neon, the root profile page reuses its loader row instead of refetching, and src/test/setup.ts removes every database URL before tests run. Why: Neon network transfer is billed and repeated small reads from open tabs and previews dominated it.
