@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getPublicProfileByHandle } from "@/lib/studio-profile.functions";
 import { getPublicAliasProfileByHandle } from "@/lib/alias-profile.functions";
 import type { ProfileBlock, ProfileRecord } from "@/lib/profile";
@@ -56,7 +56,6 @@ export function useProfileRecord(
     options?.initial?.row && options.initial.handle === username.toLowerCase()
       ? options.initial.row
       : null;
-  const skipFirst = useRef(Boolean(seeded));
   const [profile, setProfile] = useState<ProfileRecord | null>(() => (seeded ? toRecord(seeded) : null));
   const [suspended, setSuspended] = useState(() => Boolean(seeded?.["is_suspended"]));
   const [loading, setLoading] = useState(!seeded);
@@ -67,10 +66,8 @@ export function useProfileRecord(
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
   useEffect(() => {
-    if (skipFirst.current) {
-      skipFirst.current = false;
-      return;
-    }
+    // The loader's row is already on screen; only a retry asks the database again.
+    if (seeded && attempt === 0) return;
     let cancelled = false;
     const handle = username.toLowerCase();
     // Ingebouwde voorbeeldprofielen (landingspagina-vitrine) bestaan altijd.
