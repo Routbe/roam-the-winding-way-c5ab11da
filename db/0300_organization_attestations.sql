@@ -350,7 +350,7 @@ end $$;
 revoke all on function public.rout_trust_end_mandates(uuid, uuid, text, text, text, uuid) from public, rout_app;
 
 -- Closes an evidence review and destroys its document in the same transaction.
-create or replace function public.rout_trust_evidence_close(p_id uuid, p_status text, p_code text, p_actor uuid)
+create or replace function public.rout_trust_evidence_close(p_id uuid, p_status text, p_code text, p_actor uuid, p_detail jsonb default '{}'::jsonb)
 returns void language plpgsql volatile security definer set search_path = pg_catalog, pg_temp as $$
 declare v_ws uuid;
 begin
@@ -362,10 +362,10 @@ begin
   perform public.rout_trust_log(v_ws, p_id,
     case p_status when 'approved' then 'evidence_approved' when 'rejected' then 'evidence_rejected'
                   when 'withdrawn' then 'evidence_withdrawn' else 'evidence_expired' end,
-    p_actor, pg_catalog.jsonb_build_object('code', p_code));
+    p_actor, pg_catalog.jsonb_build_object('code', p_code) || coalesce(p_detail, '{}'::jsonb));
   perform public.rout_trust_log(v_ws, p_id, 'evidence_purged', p_actor, '{}'::jsonb);
 end $$;
-revoke all on function public.rout_trust_evidence_close(uuid, text, text, uuid) from public, rout_app;
+revoke all on function public.rout_trust_evidence_close(uuid, text, text, uuid, jsonb) from public, rout_app;
 
 -- Inserts an entity seal (superseding the previous one) and carries or ends mandates.
 create or replace function public.rout_trust_entity_insert(p_ws uuid, p_kind text, p_nullifier bytea, p_country text,
@@ -735,7 +735,8 @@ revoke all on function public.rout_admin_trust_reviews() from public, rout_app;
 grant execute on function public.rout_admin_trust_reviews() to rout_app;
 
 -- Hands the sealed document to the server for an admin view; every opening is on the chain.
-create or replace function public.rout_admin_trust_evidence_open(p_id uuid)
+-- p_sudo_ref = SHA-256 of the Sudo Mode session id that let the admin through (never the id itself).
+create or replace function public.rout_admin_trust_evidence_open(p_id uuid, p_sudo_ref bytea)
 returns jsonb language plpgsql volatile security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_admin uuid := public.rout_recovery_caller_admin();
@@ -744,17 +745,19 @@ begin
   if v_admin is null then return null; end if;
   select * into r from public.trust_evidence_reviews x where x.id = p_id and x.status = 'pending' and x.purge_due_at > now();
   if not found or r.requester_user_id = v_admin then return null; end if;
-  perform public.rout_trust_log(r.workspace_id, p_id, 'evidence_viewed', v_admin, '{}'::jsonb);
-  return pg_catalog.jsonb_build_object('id', r.id, 'mime', r.mime, 'sha256', pg_catalog.encode(r.sha256, 'hex'),
+  if p_sudo_ref is null or octet_length(p_sudo_ref) <> 32 then return null; end if;
+  perform public.rout_trust_log(r.workspace_id, p_id, 'evidence_viewed', v_admin,
+    pg_catalog.jsonb_build_object('sudoRef', pg_catalog.encode(p_sudo_ref, 'hex')));
+  return pg_catalog.jsonb_build_object('id', r.id, 'workspaceId', r.workspace_id, 'mime', r.mime, 'sha256', pg_catalog.encode(r.sha256, 'hex'),
     'ciphertext', pg_catalog.encode(r.ciphertext, 'base64'));
 end $$;
-revoke all on function public.rout_admin_trust_evidence_open(uuid) from public, rout_app;
-grant execute on function public.rout_admin_trust_evidence_open(uuid) to rout_app;
+revoke all on function public.rout_admin_trust_evidence_open(uuid, bytea) from public, rout_app;
+grant execute on function public.rout_admin_trust_evidence_open(uuid, bytea) to rout_app;
 
 -- Decision. Approval of a public body creates its entity seal; approval of a proven mandate makes the
 -- requester's mandate 'proven' for 12 months and supersedes their declaration. Either way the
 -- document is destroyed in this transaction; only its SHA-256 and the audit trail remain.
-create or replace function public.rout_admin_trust_evidence_decide(p_id uuid, p_approve boolean, p_code text)
+create or replace function public.rout_admin_trust_evidence_decide(p_id uuid, p_approve boolean, p_code text, p_sudo_ref bytea)
 returns text language plpgsql volatile security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_admin uuid := public.rout_recovery_caller_admin();
@@ -764,12 +767,14 @@ declare
   v_mid uuid;
 begin
   if v_admin is null then return 'forbidden'; end if;
+  if p_sudo_ref is null or octet_length(p_sudo_ref) <> 32 then return 'invalid'; end if;
   select * into r from public.trust_evidence_reviews x where x.id = p_id for update;
   if not found or r.status <> 'pending' then return 'not_open'; end if;
   if r.requester_user_id = v_admin then return 'own_request'; end if;
   if not coalesce(p_approve, false) then
     if p_code is null or p_code not in ('insufficient', 'mismatch', 'unreadable') then return 'invalid'; end if;
-    perform public.rout_trust_evidence_close(p_id, 'rejected', p_code, v_admin);
+    perform public.rout_trust_evidence_close(p_id, 'rejected', p_code, v_admin,
+      pg_catalog.jsonb_build_object('sudoRef', pg_catalog.encode(p_sudo_ref, 'hex')));
     return 'rejected';
   end if;
   if r.subject = 'public_body' then
@@ -792,11 +797,12 @@ begin
     returning id into v_mid;
     perform public.rout_trust_log(r.workspace_id, v_mid, 'mandate_proven', v_admin, pg_catalog.jsonb_build_object('basis', r.evidence_kind));
   end if;
-  perform public.rout_trust_evidence_close(p_id, 'approved', 'approved', v_admin);
+  perform public.rout_trust_evidence_close(p_id, 'approved', 'approved', v_admin,
+    pg_catalog.jsonb_build_object('sudoRef', pg_catalog.encode(p_sudo_ref, 'hex')));
   return 'approved';
 end $$;
-revoke all on function public.rout_admin_trust_evidence_decide(uuid, boolean, text) from public, rout_app;
-grant execute on function public.rout_admin_trust_evidence_decide(uuid, boolean, text) to rout_app;
+revoke all on function public.rout_admin_trust_evidence_decide(uuid, boolean, text, bytea) from public, rout_app;
+grant execute on function public.rout_admin_trust_evidence_decide(uuid, boolean, text, bytea) to rout_app;
 
 -- ------------------------------------------------------------------ layer 3: declared mandate
 -- Self-service declaration. The server built the canonical statement, had it confirmed with a passkey
