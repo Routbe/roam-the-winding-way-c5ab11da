@@ -8,7 +8,9 @@ const WS = "11111111-2222-4333-8444-555555555555";
 const NONCE = "0123456789abcdef0123456789abcdef";
 const PEPPER = "p".repeat(40);
 const KEK = { ROUT_EVIDENCE_KEK: "A".repeat(64) };
-const pdf = () => new TextEncoder().encode("%PDF-1.7 test document");
+const pdf = () => new TextEncoder().encode("%PDF-1.7 test document\n%%EOF");
+const REVIEW = "aaaaaaaa-2222-4333-8444-555555555555";
+const OTHER = "99999999-2222-4333-8444-555555555555";
 
 describe("layer 1 proofs", () => {
   it("expects the TXT value <workspace_id>:<nonce> at _rout.<domain>", () => {
@@ -65,23 +67,51 @@ describe("layer 2 registers", () => {
 });
 
 describe("evidence vault", () => {
-  it("round-trips under the same review id", () => {
-    const { sealed, sha256 } = sealEvidence(WS, pdf(), KEK);
-    expect(new TextDecoder().decode(openEvidence(WS, sealed, sha256, KEK))).toBe("%PDF-1.7 test document");
+  it("round-trips under the same workspace and review id", () => {
+    const { sealed, sha256 } = sealEvidence(WS, REVIEW, pdf(), KEK);
+    expect(new TextDecoder().decode(openEvidence(WS, REVIEW, sealed, sha256, KEK))).toBe("%PDF-1.7 test document\n%%EOF");
   });
-  it("refuses a ciphertext moved to another review", () => {
-    const { sealed, sha256 } = sealEvidence(WS, pdf(), KEK);
-    expect(() => openEvidence("99999999-2222-4333-8444-555555555555", sealed, sha256, KEK)).toThrow(EvidenceVaultError);
+  it("refuses a ciphertext moved to another review (AAD mismatch)", () => {
+    const { sealed, sha256 } = sealEvidence(WS, REVIEW, pdf(), KEK);
+    expect(() => openEvidence(WS, OTHER, sealed, sha256, KEK)).toThrow(EvidenceVaultError);
+  });
+  it("refuses a ciphertext moved to another workspace (AAD mismatch)", () => {
+    const { sealed, sha256 } = sealEvidence(WS, REVIEW, pdf(), KEK);
+    expect(() => openEvidence(OTHER, REVIEW, sealed, sha256, KEK)).toThrow(EvidenceVaultError);
+  });
+  it("refuses a tampered ciphertext or a wrong digest", () => {
+    const { sealed, sha256 } = sealEvidence(WS, REVIEW, pdf(), KEK);
+    const bad = sealed.slice(); bad[bad.length - 1]! ^= 1;
+    expect(() => openEvidence(WS, REVIEW, bad, sha256, KEK)).toThrow(EvidenceVaultError);
+    expect(() => openEvidence(WS, REVIEW, sealed, new Uint8Array(32), KEK)).toThrow(EvidenceVaultError);
+  });
+  it("uses a fresh 96-bit nonce per file", () => {
+    const a = sealEvidence(WS, REVIEW, pdf(), KEK).sealed.subarray(4, 16);
+    const b = sealEvidence(WS, REVIEW, pdf(), KEK).sealed.subarray(4, 16);
+    expect(a).toHaveLength(12);
+    expect(Buffer.from(a).equals(Buffer.from(b))).toBe(false);
   });
   it("refuses to seal without a valid ROUT_EVIDENCE_KEK", () => {
-    expect(() => sealEvidence(WS, pdf(), {})).toThrow(EvidenceVaultError);
-    expect(() => sealEvidence(WS, pdf(), { ROUT_EVIDENCE_KEK: "short" })).toThrow(EvidenceVaultError);
+    expect(() => sealEvidence(WS, REVIEW, pdf(), {})).toThrow(EvidenceVaultError);
+    expect(() => sealEvidence(WS, REVIEW, pdf(), { ROUT_EVIDENCE_KEK: "short" })).toThrow(EvidenceVaultError);
   });
   it("rejects files over 5 MB", () => {
-    expect(() => sealEvidence(WS, new Uint8Array(5 * 1024 * 1024 + 1), KEK)).toThrow(EvidenceVaultError);
+    expect(() => sealEvidence(WS, REVIEW, new Uint8Array(5 * 1024 * 1024 + 1), KEK)).toThrow(EvidenceVaultError);
   });
-  it("recognises the file type from its contents", () => {
+  it("recognises the file type from its contents only", () => {
     expect(sniffMime(pdf())).toBe("application/pdf");
+    expect(sniffMime(Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0))).toBe("image/png");
+    expect(sniffMime(Uint8Array.of(0xff, 0xd8, 0xff, 0xe0))).toBe("image/jpeg");
     expect(sniffMime(new TextEncoder().encode("hello"))).toBeNull();
+  });
+  it("rejects invalid magic bytes, renamed executables and truncated PNG signatures", () => {
+    expect(sniffMime(new TextEncoder().encode("MZ\x90\x00 this is a renamed .exe"))).toBeNull();
+    expect(sniffMime(Uint8Array.of(0x7f, 0x45, 0x4c, 0x46, 1, 1))).toBeNull();
+    expect(sniffMime(Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0))).toBeNull();
+  });
+  it("rejects HTML/SVG polyglots and PDFs without a trailer", () => {
+    expect(sniffMime(new TextEncoder().encode("%PDF-1.7 <html><script>alert(1)</script>\n%%EOF"))).toBeNull();
+    expect(sniffMime(new TextEncoder().encode("%PDF-1.7 <svg onload=x>\n%%EOF"))).toBeNull();
+    expect(sniffMime(new TextEncoder().encode("%PDF-1.7 no trailer"))).toBeNull();
   });
 });
