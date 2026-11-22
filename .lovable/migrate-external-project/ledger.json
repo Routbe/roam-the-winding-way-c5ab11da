@@ -5,37 +5,37 @@
     {
       "capability": "code",
       "source": "TanStack Start v1 app: 473 route files, 2819 TS/TSX files, MDX docs, i18n (nl/en/fr/de), emails, tests",
-      "outcome": "copied as-is; TanStack versions already identical to target (router 1.170.41, start 1.168.60, react 19.2, vite 8.1.5)",
+      "outcome": "copied into this project as-is; TanStack versions already identical to target (router 1.170.41, start 1.168.60, react 19.2, vite 8.1.5)",
       "status": "done",
       "next_action": "none"
     },
     {
       "capability": "schema",
       "source": "Neon Postgres; 293 SQL migrations in db/ (281 tables inferred), db-pending/ rollbacks, drizzle/",
-      "outcome": "migrations copied; runtime stays on Neon as in source (rout_app role, vault_enclave schema, RLS)",
+      "outcome": "migrations copied; runtime still points at Neon as in source (rout_app role, vault_enclave schema, RLS)",
       "status": "pending_decision",
-      "next_action": "user decides Neon (as today) vs Lovable Cloud; Cloud move needs the migrations replayed"
+      "next_action": "user decides: keep Neon (as today) or move to Lovable Cloud (db/ must be replayed there)"
     },
     {
       "capability": "records",
       "source": "Neon production database",
       "outcome": "no record export attached; nothing imported",
       "status": "pending",
-      "next_action": "request CSV/JSON table exports from the Neon dashboard"
+      "next_action": "request CSV/JSON exports of application tables from the Neon dashboard"
     },
     {
       "capability": "auth identities",
       "source": "Better Auth, passkey-only + OPAQUE, in Neon neon_auth schema",
       "outcome": "code preserved unchanged; no user rows imported",
       "status": "pending",
-      "next_action": "request auth.users / neon_auth.user export (ids + emails) if data is to be moved"
+      "next_action": "request neon_auth.user / auth.users export (ids + emails)"
     },
     {
       "capability": "authorization",
       "source": "Postgres RLS + rout_app role + vault_enclave SECURITY DEFINER RPCs",
       "outcome": "preserved as written in db/ migrations; not replayed against any database",
       "status": "pending",
-      "next_action": "replay db/ migrations on the chosen database, then run verify:rls"
+      "next_action": "replay db/ on the chosen database, then run bun run verify:rls"
     },
     {
       "capability": "file storage",
@@ -46,7 +46,7 @@
     },
     {
       "capability": "payments",
-      "source": "Stripe (@stripe/react-stripe-js, stripe server libs)",
+      "source": "Stripe (@stripe/stripe-js, stripe server libs)",
       "outcome": "preserved",
       "status": "pending",
       "next_action": "add Stripe keys at verification"
@@ -61,16 +61,16 @@
     {
       "capability": "schedules",
       "source": "vercel.json cron -> /api/public/cron/cleanup-assets",
-      "outcome": "endpoint preserved; scheduler itself does not exist here",
+      "outcome": "endpoint preserved; no scheduler exists here yet",
       "status": "pending",
       "next_action": "re-point a scheduler at cutover"
     },
     {
       "capability": "public endpoints / OAuth / webhooks",
       "source": "122 api_* routes, OIDC + well-known routes, /api/claim-root",
-      "outcome": "preserved unchanged",
+      "outcome": "preserved unchanged; paths identical so external callers keep working",
       "status": "pending",
-      "next_action": "verify after secrets; external callers keep the same paths"
+      "next_action": "verify after secrets"
     },
     {
       "capability": "secrets",
@@ -103,9 +103,9 @@
     {
       "capability": "verification",
       "source": "-",
-      "outcome": "not yet run in this project",
-      "status": "pending",
-      "next_action": "build + typecheck + render key routes after copy and install"
+      "outcome": "build OK (build-errors.log); /, /about, /login, /docs return 200 and render fully styled in a browser with no console errors; login page correctly reports the account service is not connected",
+      "status": "partial",
+      "next_action": "sign-in and data checks need the database decision + secrets"
     }
   ]
 }
