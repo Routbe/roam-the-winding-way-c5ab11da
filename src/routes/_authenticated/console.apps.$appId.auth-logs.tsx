@@ -33,7 +33,7 @@ function AuthLogsPage() {
   const { data, error } = useQuery({
     queryKey: ["console", "auth-logs", appId, errorsOnly],
     queryFn: () => list({ data: { id: appId, errorsOnly } }),
-    refetchInterval: paused ? false : 3000,
+    refetchInterval: paused ? false : 15_000,
     retry: false,
   });
 

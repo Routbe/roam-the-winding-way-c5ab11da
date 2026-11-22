@@ -36,10 +36,29 @@ function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Pro
  * set when the lookup itself failed, so the page never shows a false
  * "still available" state — and never spins forever.
  */
-export function useProfileRecord(username: string, options?: { free?: boolean }) {
-  const [profile, setProfile] = useState<ProfileRecord | null>(null);
-  const [suspended, setSuspended] = useState(false);
-  const [loading, setLoading] = useState(true);
+function toRecord(row: Row): ProfileRecord {
+  return {
+    ...row,
+    blocks: Array.isArray(row.blocks) ? (row.blocks as unknown as ProfileBlock[]) : [],
+  } as unknown as ProfileRecord;
+}
+
+/**
+ * `initial` is a row the route loader already fetched for this same handle; when present the
+ * first render reuses it instead of asking the database a second time (egress). A null or
+ * missing row is never reused, so a failed loader lookup still gets its own client attempt.
+ */
+export function useProfileRecord(
+  username: string,
+  options?: { free?: boolean; initial?: { handle: string; row: Row | null } },
+) {
+  const seeded =
+    options?.initial?.row && options.initial.handle === username.toLowerCase()
+      ? options.initial.row
+      : null;
+  const [profile, setProfile] = useState<ProfileRecord | null>(() => (seeded ? toRecord(seeded) : null));
+  const [suspended, setSuspended] = useState(() => Boolean(seeded?.["is_suspended"]));
+  const [loading, setLoading] = useState(!seeded);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const free = options?.free;
@@ -47,6 +66,8 @@ export function useProfileRecord(username: string, options?: { free?: boolean })
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
   useEffect(() => {
+    // The loader's row is already on screen; only a retry asks the database again.
+    if (seeded && attempt === 0) return;
     let cancelled = false;
     const handle = username.toLowerCase();
     // Ingebouwde voorbeeldprofielen (landingspagina-vitrine) bestaan altijd.
@@ -88,12 +109,7 @@ export function useProfileRecord(username: string, options?: { free?: boolean })
 
       setSuspended(Boolean(row?.["is_suspended"]));
       setProfile(
-        row
-          ? ({
-              ...row,
-              blocks: Array.isArray(row.blocks) ? (row.blocks as unknown as ProfileBlock[]) : [],
-            } as unknown as ProfileRecord)
-          : (demo?.record ?? null),
+        row ? toRecord(row) : (demo?.record ?? null),
       );
       setLoading(false);
     })();

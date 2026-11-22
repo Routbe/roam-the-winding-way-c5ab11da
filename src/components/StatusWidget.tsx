@@ -22,7 +22,7 @@ export function StatusWidget({ className }: { className?: string }) {
 
     const check = async () => {
       try {
-        const res = await fetch("/api/public/health", { cache: "no-store" });
+        const res = await fetch("/api/public/health");
         if (!res.ok) throw new Error("bad status");
         const data = (await res.json()) as { status?: string; latency_ms?: number };
         if (cancelled) return;
@@ -36,11 +36,17 @@ export function StatusWidget({ className }: { className?: string }) {
       }
     };
 
-    check();
-    const id = window.setInterval(check, 60_000);
+    // Hidden tabs never poll; becoming visible again checks once.
+    const tick = () => {
+      if (document.visibilityState === "visible") void check();
+    };
+    void check();
+    const id = window.setInterval(tick, 60_000);
+    document.addEventListener("visibilitychange", tick);
     return () => {
       cancelled = true;
       window.clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
     };
   }, []);
 

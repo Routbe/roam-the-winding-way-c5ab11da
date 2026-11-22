@@ -50,7 +50,11 @@ function CleanProfile() {
 
 function HandleProfile({ username }: { username: string }) {
   const handle = canonicalHandle(username);
-  const { profile, suspended, loading, error, retry } = useProfileRecord(handle, { free: false });
+  const loaded = Route.useLoaderData();
+  const { profile, suspended, loading, error, retry } = useProfileRecord(handle, {
+    free: false,
+    initial: { handle: loaded.handle, row: loaded.profile },
+  });
 
   // Bezoekstatistiek (privacyvriendelijk, geen persoonsgegevens).
   useRecordVisit(profile ? handle : null, "root");
