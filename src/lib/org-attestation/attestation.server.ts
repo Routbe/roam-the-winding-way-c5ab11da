@@ -4,6 +4,7 @@
  * (requireAuth); the database decides who manages a workspace and who is a 2FA admin.
  * Nothing here stores a register number, e-mail address or document in plain form.
  */
+import { hkdf } from "@noble/hashes/hkdf.js";
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { randomInt, randomUUID } from "node:crypto";
@@ -13,6 +14,8 @@ import { checkDnsTxt, checkWellKnown } from "./dns-verifier.server";
 import { checkLei, checkVat } from "./vies-gleif.server";
 import { evidenceConfigured, openEvidence, sealEvidence, sniffMime } from "./evidence-vault.server";
 import type { EvidenceMime } from "./evidence-vault.server";
+import { MANDATE_TTL_SEC, NonceLedger, canonicalStatement, issueTicket, openTicket, statementSigningMessage } from "./mandate-declaration";
+import { randomBytes } from "@noble/hashes/utils.js";
 import { emailOnDomain, evidenceDigest, normalizeDomain, organisationNullifier, toHex } from "./proofs";
 
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
@@ -137,8 +140,13 @@ export async function submitEvidence(input: EvidenceInput) {
     nullifier = organisationNullifier("public_body", `${input.country}:${input.publicBodyId.replace(/\s/g, "").toUpperCase()}`, identityPepper());
   }
   const id = randomUUID();
-  const { sealed, sha256: digest } = sealEvidence(id, input.bytes);
-  input.bytes.fill(0);
+  let sealedOut: { sealed: Uint8Array; sha256: Uint8Array };
+  try {
+    sealedOut = sealEvidence(input.workspaceId, id, input.bytes);
+  } finally {
+    input.bytes.fill(0); // plaintext never outlives the seal, also when sealing fails
+  }
+  const { sealed, sha256: digest } = sealedOut;
   const r = (await rpc("rout_trust_evidence_submit", [
     id, input.workspaceId, input.subject, input.kind, digest, input.mime, sealed.length - 32, sealed,
     nullifier, input.subject === "public_body" ? input.country : null, input.publicName ?? null,
@@ -156,27 +164,126 @@ export async function adminReviews() {
   return (await rpc("rout_admin_trust_reviews", [])) as JsonValue[] | null;
 }
 
+/** SHA-256 of the Sudo Mode session id: the audit row names the exact passkey step-up, never the id. */
+export function sudoReference(sudoJti: string): Uint8Array {
+  if (!/^[A-Za-z0-9_-]{22}$/.test(sudoJti)) throw new Error("sudo_reference_invalid");
+  return sha256(enc.encode(`rout.trust.sudo_ref.v1\u001f${sudoJti}`));
+}
+
+/** The append-only hash chain must be intact before any admin decision is written on top of it. */
+export async function auditChainIntact(): Promise<boolean> {
+  const broken = await rpc("rout_trust_events_verify", []);
+  return broken === null;
+}
+
 /** Opens one document for the admin view; returned as base64 and never stored. */
-export async function adminOpenEvidence(id: string) {
-  const r = (await rpc("rout_admin_trust_evidence_open", [id])) as { id: string; mime: string; sha256: string; ciphertext: string } | null;
+export async function adminOpenEvidence(id: string, sudoJti: string) {
+  const r = (await rpc("rout_admin_trust_evidence_open", [id, sudoReference(sudoJti)])) as
+    { id: string; workspaceId: string; mime: string; sha256: string; ciphertext: string } | null;
   if (!r) return null;
   const sealed = Uint8Array.from(Buffer.from(r.ciphertext, "base64"));
-  const pt = openEvidence(r.id, sealed, fromHex(r.sha256));
+  const pt = openEvidence(r.workspaceId, r.id, sealed, fromHex(r.sha256));
   try {
     return { mime: r.mime, sha256: r.sha256, base64: Buffer.from(pt).toString("base64") };
   } finally {
     pt.fill(0);
+    sealed.fill(0);
   }
 }
 
-export async function adminDecide(id: string, approve: boolean, code: string | null) {
-  return { result: String(await rpc("rout_admin_trust_evidence_decide", [id, approve, code])) };
+export async function adminDecide(id: string, approve: boolean, code: string | null, sudoJti: string) {
+  if (!(await auditChainIntact())) return { result: "audit_chain_broken" };
+  return { result: String(await rpc("rout_admin_trust_evidence_decide", [id, approve, code, sudoReference(sudoJti)])) };
+}
+
+// ---------------------------------------------------------------- layer 3: passkey-confirmed declaration
+
+const declarationNonces = new NonceLedger();
+const nowSec = () => Math.floor(Date.now() / 1000);
+
+function subjectMaster(): string | null {
+  const master = process.env["ROUT_SUBJECT_MASTER_KEY"] ?? "";
+  return master.length >= 32 ? master : null;
+}
+
+/** Ticket MAC key and Ed25519 declaration seed, each HKDF'd under its own label; wiped by the caller. */
+function declarationKeys(): { mac: Uint8Array; seed: Uint8Array } | null {
+  const master = subjectMaster();
+  if (!master) return null;
+  const ikm = enc.encode(master);
+  return {
+    mac: hkdf(sha256, ikm, enc.encode("rout.org_mandate.ticket"), enc.encode("hmac-sha256.v1"), 32),
+    seed: hkdf(sha256, ikm, enc.encode("rout.org_mandate.declaration"), enc.encode("ed25519.v1"), 32),
+  };
+}
+
+type ManageFacts = {
+  domain?: string | null;
+  domainSeal?: { kind: string } | null;
+  entity?: { id: string } | null;
+  workEmail?: { id: string; status: string } | null;
+  legalIdentity?: boolean;
+};
+
+function declarationBlocker(m: ManageFacts | null): string | null {
+  if (!m) return "not_manager";
+  if (!m.legalIdentity) return "legal_identity_required";
+  if (!m.entity) return "organization_required";
+  if (!m.domainSeal || m.domainSeal.kind !== "dns_txt" || !m.domain) return "dns_required";
+  if (!m.workEmail || m.workEmail.status !== "verified") return "work_email_required";
+  return null;
+}
+
+/** Step 1: a 300 s single-use ticket bound to member + workspace (no database write). */
+export async function startMandateDeclaration(workspaceId: string, userId: string) {
+  const blocker = declarationBlocker((await rpc("rout_trust_manage", [workspaceId])) as ManageFacts | null);
+  if (blocker) return { ok: false as const, reason: blocker };
+  const keys = declarationKeys();
+  if (!keys) return { ok: false as const, reason: "declaration_not_configured" };
+  try {
+    const nonce = toHex(randomBytes(16));
+    return { ok: true as const, ticket: issueTicket(keys.mac, workspaceId, userId, nonce, nowSec()) };
+  } finally {
+    keys.mac.fill(0); keys.seed.fill(0);
+  }
+}
+
+/** Step 2 (behind Sudo Mode, i.e. a fresh passkey assertion): verify, spend, sign, store. */
+export async function declareMandate(workspaceId: string, userId: string, ticket: string) {
+  const keys = declarationKeys();
+  if (!keys) return { ok: false as const, reason: "declaration_not_configured" };
+  try {
+    const now = nowSec();
+    const t = openTicket(keys.mac, ticket, workspaceId, userId, now);
+    if (!t) return { ok: false as const, reason: "ticket_invalid" };
+    if (!declarationNonces.spend(t.nonce, t.issuedAtSec + MANDATE_TTL_SEC, now)) return { ok: false as const, reason: "ticket_replayed" };
+    const m = (await rpc("rout_trust_manage", [workspaceId])) as ManageFacts | null;
+    const blocker = declarationBlocker(m);
+    if (blocker || !m?.entity || !m.workEmail || !m.domain) return { ok: false as const, reason: blocker ?? "invalid" };
+    const statement = canonicalStatement({
+      workspaceId, holderId: userId, entityId: m.entity.id, domain: m.domain, workEmailId: m.workEmail.id,
+      nonce: t.nonce, issuedAtSec: t.issuedAtSec, challenge: t.challenge,
+    });
+    const digest = sha256(enc.encode(statement));
+    const { ed25519 } = await import("@noble/curves/ed25519.js");
+    const signature = b64url(ed25519.sign(statementSigningMessage(digest), keys.seed));
+    const kid = toHex(sha256(ed25519.getPublicKey(keys.seed)).subarray(0, 8));
+    const r = (await rpc("rout_trust_mandate_declare", [workspaceId, statement, digest, signature, kid])) as { ok: boolean; id?: string; reason?: string };
+    return r?.ok ? { ok: true as const, id: r.id } : { ok: false as const, reason: r?.reason ?? "failed" };
+  } finally {
+    keys.mac.fill(0); keys.seed.fill(0);
+  }
+}
+
+function b64url(b: Uint8Array): string {
+  return Buffer.from(b).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 // ---------------------------------------------------------------- cron
 
 /** DNS re-check of active domain seals, then the time-based maintenance (expiry, 7-day purge). */
-export async function attestationSweep(limit = 100) {
+/** Batches of at most 50 seals per run; the definer returns only id, workspace, domain, kind and nonce. */
+export async function attestationSweep(limit = 50) {
   const list = (await rpc("rout_trust_domain_sweep", [limit])) as Array<{ id: string; workspaceId: string; domain: string; kind: string; nonce: string }>;
   const tally = { checked: 0, ok: 0, failing: 0, lapsed: 0, skipped: 0 };
   for (const s of list ?? []) {

@@ -2353,5 +2353,18 @@
   "trust.admin.approve": "Goedkeuren",
   "trust.admin.sudo": "Bevestig eerst met je passkey (Sudo Mode).",
   "trust.admin.result.approved": "Goedgekeurd. Het document is gewist.",
-  "trust.admin.result.rejected": "Afgewezen. Het document is gewist."
+  "trust.admin.result.rejected": "Afgewezen. Het document is gewist.",
+  "trust.l3.declareTitle": "Bevoegdheid verklaard · met je passkey",
+  "trust.l3.declareIntro": "Je verklaart bevoegd te zijn voor deze organisatie. ROUT ondertekent die verklaring nadat je bevestigt met je passkey.",
+  "trust.l3.declareNeeds": "Hiervoor heb je een geverifieerde identiteit, een geverifieerde organisatie, een DNS-zegel en een bevestigd werkadres nodig.",
+  "trust.l3.declareButton": "Verklaar met passkey",
+  "trust.l3.declared": "Je verklaring is ondertekend en opgeslagen.",
+  "trust.reason.dns_required": "Bevestig eerst het domein met een DNS-record.",
+  "trust.reason.ticket_invalid": "Deze bevestiging is verlopen. Probeer opnieuw.",
+  "trust.reason.ticket_replayed": "Deze bevestiging is al gebruikt. Probeer opnieuw.",
+  "trust.reason.declaration_not_configured": "Verklaren is nog niet ingeschakeld.",
+  "trust.reason.already_proven": "Je bevoegdheid is al met een officieel document bewezen.",
+  "trust.reason.frozen": "Je bevoegdheid is bevroren.",
+  "trust.reason.statement_mismatch": "De gegevens zijn intussen gewijzigd. Probeer opnieuw.",
+  "trust.admin.result.audit_chain_broken": "Het auditlogboek is niet intact. Er is niets beslist."
 }

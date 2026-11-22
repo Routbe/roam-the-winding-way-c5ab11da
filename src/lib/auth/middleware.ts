@@ -70,7 +70,8 @@ export type SudoLabel =
   | "ingest_token_rotate"
   | "workspace_key_rotate"
   | "document_sign"
-  | "trust_evidence_review";
+  | "trust_evidence_review"
+  | "mandate_declaration";
 
 /**
  * Sudo Mode gate (rules in sudo-rules.ts): the signed-in member must hold a sudo session opened
@@ -82,7 +83,8 @@ export function requireSudo(label: SudoLabel) {
     .middleware([requireAuth])
     .server(async ({ next, context }) => {
       const { ensureSudo } = await import("./sudo.server");
-      await ensureSudo(context.userId, label);
-      return next();
+      const sudo = await ensureSudo(context.userId, label);
+      // Opaque id of the passkey-opened session, so audit rows can name the exact step-up.
+      return next({ context: { sudoJti: sudo.jti } });
     });
 }

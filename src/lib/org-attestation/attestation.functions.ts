@@ -81,11 +81,23 @@ export const adminListTrustReviews = createServerFn({ method: "POST" })
 export const adminOpenTrustEvidence = createServerFn({ method: "POST" })
   .middleware([requireAuth, requireSudo("trust_evidence_review")])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
-  .handler(async ({ data }) => (await import("./attestation.server")).adminOpenEvidence(data.id));
+  .handler(async ({ data, context }) => (await import("./attestation.server")).adminOpenEvidence(data.id, context.sudoJti));
 
 export const adminDecideTrustEvidence = createServerFn({ method: "POST" })
   .middleware([requireAuth, requireSudo("trust_evidence_review")])
   .inputValidator((d) =>
     z.object({ id: z.string().uuid(), approve: z.boolean(), code: z.enum(["insufficient", "mismatch", "unreadable"]).nullable() }).parse(d),
   )
-  .handler(async ({ data }) => (await import("./attestation.server")).adminDecide(data.id, data.approve, data.code));
+  .handler(async ({ data, context }) => (await import("./attestation.server")).adminDecide(data.id, data.approve, data.code, context.sudoJti));
+
+/** Layer 3 "declared", step 1: a 300 s single-use ticket bound to this member and workspace. */
+export const startMandateDeclaration = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .inputValidator((d) => z.object({ workspaceId: ws }).parse(d))
+  .handler(async ({ data, context }) => (await import("./attestation.server")).startMandateDeclaration(data.workspaceId, context.userId));
+
+/** Step 2: only after a fresh passkey assertion (Sudo Mode); the server signs and stores the statement. */
+export const declareWorkspaceMandate = createServerFn({ method: "POST" })
+  .middleware([requireAuth, requireSudo("mandate_declaration")])
+  .inputValidator((d) => z.object({ workspaceId: ws, ticket: z.string().min(10).max(200) }).parse(d))
+  .handler(async ({ data, context }) => (await import("./attestation.server")).declareMandate(data.workspaceId, context.userId, data.ticket));

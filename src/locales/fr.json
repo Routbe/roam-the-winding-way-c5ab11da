@@ -2353,5 +2353,18 @@
   "trust.admin.approve": "Approuver",
   "trust.admin.sudo": "Confirmez d'abord avec votre passkey (mode Sudo).",
   "trust.admin.result.approved": "Approuvé. Le document a été supprimé.",
-  "trust.admin.result.rejected": "Refusé. Le document a été supprimé."
+  "trust.admin.result.rejected": "Refusé. Le document a été supprimé.",
+  "trust.l3.declareTitle": "Pouvoir déclaré · avec votre passkey",
+  "trust.l3.declareIntro": "Vous déclarez être habilité pour cette organisation. ROUT signe cette déclaration après confirmation avec votre passkey.",
+  "trust.l3.declareNeeds": "Il faut une identité vérifiée, une organisation vérifiée, un sceau DNS et une adresse professionnelle confirmée.",
+  "trust.l3.declareButton": "Déclarer avec la passkey",
+  "trust.l3.declared": "Votre déclaration a été signée et enregistrée.",
+  "trust.reason.dns_required": "Confirmez d'abord le domaine avec un enregistrement DNS.",
+  "trust.reason.ticket_invalid": "Cette confirmation a expiré. Réessayez.",
+  "trust.reason.ticket_replayed": "Cette confirmation a déjà été utilisée. Réessayez.",
+  "trust.reason.declaration_not_configured": "La déclaration n'est pas encore activée.",
+  "trust.reason.already_proven": "Votre pouvoir est déjà prouvé par un document officiel.",
+  "trust.reason.frozen": "Votre pouvoir est gelé.",
+  "trust.reason.statement_mismatch": "Les données ont changé entre-temps. Réessayez.",
+  "trust.admin.result.audit_chain_broken": "Le journal d'audit n'est pas intact. Rien n'a été décidé."
 }
