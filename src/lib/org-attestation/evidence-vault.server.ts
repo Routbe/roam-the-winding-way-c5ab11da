@@ -4,10 +4,11 @@
  * (read per call, never at module scope); the AES key is HKDF-derived from the KEK.
  *
  *   sealed = "REV1" || nonce(12) || ciphertext || tag(16)
- *   AAD    = "rout.trust.evidence.v1" || reviewId || sha256(plaintext)
+ *   AAD    = "rout:org_evidence:v1:" || workspaceId || ":" || reviewId || 0x1f || sha256(plaintext)
  *
- * The review id is chosen by the server and bound into the AAD, so a ciphertext moved to
- * another row does not open. Every failure is the same EvidenceVaultError (no oracle).
+ * Workspace and review id (chosen by the server) are bound into the AAD with a fresh 96-bit
+ * CSPRNG nonce per file, so a ciphertext moved to another workspace or dossier does not open.
+ * Every failure is the same EvidenceVaultError (no oracle).
  */
 import { gcm } from "@noble/ciphers/aes.js";
 import { hkdf } from "@noble/hashes/hkdf.js";
@@ -38,8 +39,13 @@ export function evidenceConfigured(env: Record<string, string | undefined> = pro
   return typeof kek === "string" && KEK_RE.test(kek);
 }
 
-function aad(reviewId: string, digest: Uint8Array): Uint8Array {
-  const head = enc.encode(`rout.trust.evidence.v1\u001f${reviewId.toLowerCase()}\u001f`);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+function aad(workspaceId: string, reviewId: string, digest: Uint8Array): Uint8Array {
+  const ws = workspaceId.toLowerCase();
+  const id = reviewId.toLowerCase();
+  if (!UUID_RE.test(ws) || !UUID_RE.test(id)) throw new EvidenceVaultError();
+  const head = enc.encode(`rout:org_evidence:v1:${ws}:${id}\u001f`);
   const out = new Uint8Array(head.length + digest.length);
   out.set(head); out.set(digest, head.length);
   return out;
@@ -48,18 +54,18 @@ function aad(reviewId: string, digest: Uint8Array): Uint8Array {
 /** Recognises the file by its magic bytes; the declared type must match. */
 export function sniffMime(bytes: Uint8Array): EvidenceMime | null {
   if (bytes.length >= 5 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46 && bytes[4] === 0x2d) return "application/pdf";
-  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "image/png";
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 && bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a) return "image/png";
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
   return null;
 }
 
-export function sealEvidence(reviewId: string, plaintext: Uint8Array, env: Record<string, string | undefined> = process.env): { sealed: Uint8Array; sha256: Uint8Array } {
+export function sealEvidence(workspaceId: string, reviewId: string, plaintext: Uint8Array, env: Record<string, string | undefined> = process.env): { sealed: Uint8Array; sha256: Uint8Array } {
   if (plaintext.length < 1 || plaintext.length > MAX_EVIDENCE_BYTES) throw new EvidenceVaultError();
   const key = deriveKey(env);
   try {
     const digest = sha256(plaintext);
     const nonce = randomBytes(NONCE_LEN);
-    const ct = gcm(key, nonce, aad(reviewId, digest)).encrypt(plaintext);
+    const ct = gcm(key, nonce, aad(workspaceId, reviewId, digest)).encrypt(plaintext);
     const sealed = new Uint8Array(MAGIC.length + NONCE_LEN + ct.length);
     sealed.set(MAGIC); sealed.set(nonce, MAGIC.length); sealed.set(ct, MAGIC.length + NONCE_LEN);
     return { sealed, sha256: digest };
@@ -68,13 +74,13 @@ export function sealEvidence(reviewId: string, plaintext: Uint8Array, env: Recor
   }
 }
 
-export function openEvidence(reviewId: string, sealed: Uint8Array, expectedSha256: Uint8Array, env: Record<string, string | undefined> = process.env): Uint8Array {
+export function openEvidence(workspaceId: string, reviewId: string, sealed: Uint8Array, expectedSha256: Uint8Array, env: Record<string, string | undefined> = process.env): Uint8Array {
   if (sealed.length < MAGIC.length + NONCE_LEN + 17) throw new EvidenceVaultError();
   for (let i = 0; i < MAGIC.length; i++) if (sealed[i] !== MAGIC[i]) throw new EvidenceVaultError();
   const key = deriveKey(env);
   try {
     const nonce = sealed.subarray(MAGIC.length, MAGIC.length + NONCE_LEN);
-    const pt = gcm(key, nonce, aad(reviewId, expectedSha256)).decrypt(sealed.subarray(MAGIC.length + NONCE_LEN));
+    const pt = gcm(key, nonce, aad(workspaceId, reviewId, expectedSha256)).decrypt(sealed.subarray(MAGIC.length + NONCE_LEN));
     const d = sha256(pt);
     let diff = d.length ^ expectedSha256.length;
     for (let i = 0; i < d.length; i++) diff |= d[i]! ^ (expectedSha256[i] ?? 0);
