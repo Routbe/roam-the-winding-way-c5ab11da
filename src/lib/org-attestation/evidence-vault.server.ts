@@ -51,9 +51,27 @@ function aad(workspaceId: string, reviewId: string, digest: Uint8Array): Uint8Ar
   return out;
 }
 
-/** Recognises the file by its magic bytes; the declared type must match. */
+// Markup or executable headers inside the first KiB mark a polyglot (a file that is also HTML/SVG/script).
+const POLYGLOT = /<(?:!doctype|html|head|body|script|svg|iframe|object|embed)\b|javascript:/i;
+
+function looksPolyglot(bytes: Uint8Array): boolean {
+  const head = String.fromCharCode(...bytes.subarray(0, Math.min(bytes.length, 1024)));
+  return POLYGLOT.test(head);
+}
+
+/** A PDF must also end with its %%EOF trailer (within the last KiB). */
+function pdfTrailerOk(bytes: Uint8Array): boolean {
+  const tail = String.fromCharCode(...bytes.subarray(Math.max(0, bytes.length - 1024)));
+  return tail.includes("%%EOF");
+}
+
+/**
+ * Recognises the file by its magic bytes only (never extension or Content-Type); the declared type
+ * must match. Polyglots (markup in the first KiB) and PDFs without a trailer are refused.
+ */
 export function sniffMime(bytes: Uint8Array): EvidenceMime | null {
-  if (bytes.length >= 5 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46 && bytes[4] === 0x2d) return "application/pdf";
+  if (bytes.length < 3 || looksPolyglot(bytes)) return null;
+  if (bytes.length >= 5 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46 && bytes[4] === 0x2d) return pdfTrailerOk(bytes) ? "application/pdf" : null;
   if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 && bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a) return "image/png";
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
   return null;
