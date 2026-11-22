@@ -164,7 +164,6 @@ export async function adminReviews() {
   return (await rpc("rout_admin_trust_reviews", [])) as JsonValue[] | null;
 }
 
-/** Opens one document for the admin view; returned as base64 and never stored. */
 /** SHA-256 of the Sudo Mode session id: the audit row names the exact passkey step-up, never the id. */
 export function sudoReference(sudoJti: string): Uint8Array {
   if (!/^[A-Za-z0-9_-]{22}$/.test(sudoJti)) throw new Error("sudo_reference_invalid");

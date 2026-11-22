@@ -9,7 +9,9 @@ import { useI18n } from "@/lib/i18n";
 import {
   attestWorkspaceRegister, confirmWorkEmailCheck, getDomainChallenge, getWorkspaceTrust,
   revokeWorkspaceRegister, startWorkEmailCheck, submitTrustEvidence, verifyWorkspaceDomain, withdrawTrustEvidence,
+  startMandateDeclaration, declareWorkspaceMandate,
 } from "@/lib/org-attestation/attestation.functions";
+import { withSudo, SudoCancelledError } from "@/lib/auth/sudo-client";
 
 const card = "space-y-4 rounded-2xl border border-border bg-card p-5";
 const sub = "space-y-3 rounded-xl border border-border/70 bg-background p-4";
@@ -184,6 +186,9 @@ function MandateLayer({ workspaceId, o, lang, onDone }: { workspaceId: string; o
   const reason = useReason();
   const submitFn = useServerFn(submitTrustEvidence);
   const withdrawFn = useServerFn(withdrawTrustEvidence);
+  const startDeclFn = useServerFn(startMandateDeclaration);
+  const declareFn = useServerFn(declareWorkspaceMandate);
+  const canDeclare = !!o.entity && o.legalIdentity && o.domainSeal?.kind === "dns_txt" && o.workEmail?.status === "verified";
   const [kind, setKind] = useState<"kbo_extract" | "staatsblad" | "qes_mandate">("kbo_extract");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -204,6 +209,19 @@ function MandateLayer({ workspaceId, o, lang, onDone }: { workspaceId: string; o
           </div>
         ) : !o.evidenceConfigured ? <p className="text-sm text-muted-foreground">{t("trust.l3.notConfigured")}</p> : (
           <div className="space-y-3">
+            <div className="space-y-2">
+              <p className="text-sm font-medium">{t("trust.l3.declareTitle")}</p>
+              <p className="text-xs text-muted-foreground">{canDeclare ? t("trust.l3.declareIntro") : t("trust.l3.declareNeeds")}</p>
+              <Button size="sm" variant="outline" disabled={busy || !canDeclare} onClick={async () => {
+                setBusy(true);
+                try {
+                  const start = await startDeclFn({ data: { workspaceId } });
+                  if (!start.ok) { toast.error(reason(start.reason)); return; }
+                  const r = await withSudo(() => declareFn({ data: { workspaceId, ticket: start.ticket } }));
+                  if (r.ok) { toast.success(t("trust.l3.declared")); onDone(); } else toast.error(reason(r.reason));
+                } catch (e) { if (!(e instanceof SudoCancelledError)) toast.error(reason(undefined)); } finally { setBusy(false); }
+              }}>{t("trust.l3.declareButton")}</Button>
+            </div>
             <p className="text-sm font-medium">{t("trust.l3.provenTitle")}</p>
             <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t("trust.l3.provenTitle")}>
               {(["kbo_extract", "staatsblad", "qes_mandate"] as const).map((k) => (
