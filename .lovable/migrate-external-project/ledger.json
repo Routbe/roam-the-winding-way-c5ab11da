@@ -1,0 +1,111 @@
+{
+  "source": "github:Routbe/roam-the-winding-way@main (cloned to /tmp/roam-src)",
+  "capturedAt": "2026-11-22T13:39Z",
+  "capabilities": [
+    {
+      "capability": "code",
+      "source": "TanStack Start v1 app: 473 route files, 2819 TS/TSX files, MDX docs, i18n (nl/en/fr/de), emails, tests",
+      "outcome": "copied into this project as-is; TanStack versions already identical to target (router 1.170.41, start 1.168.60, react 19.2, vite 8.1.5)",
+      "status": "done",
+      "next_action": "none"
+    },
+    {
+      "capability": "schema",
+      "source": "Neon Postgres; 293 SQL migrations in db/ (281 tables inferred), db-pending/ rollbacks, drizzle/",
+      "outcome": "migrations copied; runtime still points at Neon as in source (rout_app role, vault_enclave schema, RLS)",
+      "status": "pending_decision",
+      "next_action": "user decides: keep Neon (as today) or move to Lovable Cloud (db/ must be replayed there)"
+    },
+    {
+      "capability": "records",
+      "source": "Neon production database",
+      "outcome": "no record export attached; nothing imported",
+      "status": "pending",
+      "next_action": "request CSV/JSON exports of application tables from the Neon dashboard"
+    },
+    {
+      "capability": "auth identities",
+      "source": "Better Auth, passkey-only + OPAQUE, in Neon neon_auth schema",
+      "outcome": "code preserved unchanged; no user rows imported",
+      "status": "pending",
+      "next_action": "request neon_auth.user / auth.users export (ids + emails)"
+    },
+    {
+      "capability": "authorization",
+      "source": "Postgres RLS + rout_app role + vault_enclave SECURITY DEFINER RPCs",
+      "outcome": "preserved as written in db/ migrations; not replayed against any database",
+      "status": "pending",
+      "next_action": "replay db/ on the chosen database, then run bun run verify:rls"
+    },
+    {
+      "capability": "file storage",
+      "source": "Scaleway S3 (SCALEWAY_* + S3_* vars)",
+      "outcome": "preserved",
+      "status": "pending",
+      "next_action": "add SCALEWAY_ACCESS_KEY / SECRET_KEY / ENDPOINT / buckets via secure secret form"
+    },
+    {
+      "capability": "payments",
+      "source": "Stripe (@stripe/stripe-js, stripe server libs)",
+      "outcome": "preserved",
+      "status": "pending",
+      "next_action": "add Stripe keys at verification"
+    },
+    {
+      "capability": "email",
+      "source": "src/emails (react-email), Brevo template audit script",
+      "outcome": "preserved",
+      "status": "pending",
+      "next_action": "confirm provider credentials at verification"
+    },
+    {
+      "capability": "schedules",
+      "source": "vercel.json cron -> /api/public/cron/cleanup-assets",
+      "outcome": "endpoint preserved; no scheduler exists here yet",
+      "status": "pending",
+      "next_action": "re-point a scheduler at cutover"
+    },
+    {
+      "capability": "public endpoints / OAuth / webhooks",
+      "source": "122 api_* routes, OIDC + well-known routes, /api/claim-root",
+      "outcome": "preserved unchanged; paths identical so external callers keep working",
+      "status": "pending",
+      "next_action": "verify after secrets"
+    },
+    {
+      "capability": "secrets",
+      "source": "DATABASE_URL/MIGRATION_URL, BETTER_AUTH_SECRET, SCALEWAY_*, Stripe, OMNI_*, STEAM_WEB_API_KEY, LASTFM_API_KEY, ROUT_* OAuth",
+      "outcome": "none present in repo; none requested yet",
+      "status": "pending",
+      "next_action": "collect through Lovable's secure secret form when verification is ready"
+    },
+    {
+      "capability": "omni worker",
+      "source": "worker/ standalone Bun/Linux daemon (Sharp/FFmpeg, persistent LISTEN, Dockerfile)",
+      "outcome": "code copied; cannot run inside the web app or Lovable's edge runtime",
+      "status": "blocked",
+      "next_action": "host separately (Docker) outside this project"
+    },
+    {
+      "capability": "wasm modules",
+      "source": "wasm/rout-zk, wasm/rout-opaque (Rust)",
+      "outcome": "sources copied; not compiled here",
+      "status": "pending",
+      "next_action": "build with cargo/wasm-pack if the ZK features are exercised"
+    },
+    {
+      "capability": "cutover",
+      "source": "Vercel / previous host",
+      "outcome": "not started",
+      "status": "pending",
+      "next_action": "after verification"
+    },
+    {
+      "capability": "verification",
+      "source": "-",
+      "outcome": "build OK (build-errors.log); /, /about, /login, /docs return 200 and render fully styled in a browser with no console errors; login page correctly reports the account service is not connected",
+      "status": "partial",
+      "next_action": "sign-in and data checks need the database decision + secrets"
+    }
+  ]
+}
